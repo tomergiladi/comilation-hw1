@@ -1,0 +1,14 @@
+import UIKit
+/* Start of 
+Lottery Program */
+func generateNumber(mod : Int) -> Int {
+    return Int(arc4random()) % mod
+}
+
+var x = 0xFf
+var counter = Int(+1.0e+2-0o144+0x64p+0-100)
+while (counter < x) {
+    print(generateNumber(mod: 0b1001101))
+    counter = counter + 1
+}
+/* End of /* Lottery */ Program */

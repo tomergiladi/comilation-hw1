@@ -1,0 +1,7 @@
+import UIKit
+var num = 1.0e+6
+var x : String = "\u{54}o \u{6C}nf\u{69}n\u{69}ty,\n\t\t\t\t\t a\u{6E}d B\u{65}y\u{6F}nd!"
+while true {
+    print(x)
+}
+// something important

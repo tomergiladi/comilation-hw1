@@ -1,0 +1,117 @@
+%{
+	#include "attributes.h"
+	#include <iostream>
+	#include <stdlib.h>
+	typedef enum { OP_AND, OP_OR } opType;
+
+	using namespace std;
+
+	extern int yylex();
+	int yyerror(const char * message);
+%}
+
+%token tkvoid
+%token tkint
+%token tkbyte
+%token tkbool
+%token tkb
+%token tkand
+%token tkor
+%token tknot
+%token tktrue
+%token tkfalse
+%token tkreturn
+%token tkif
+%token tkelse
+%token tkwhile
+%token tkbreak
+%token tkcontinue
+%token tksc
+%token tkcomma
+%token tklp
+%token tkrp
+%token tklbrace
+%token tkrbrace
+%token tkassign
+%token tkrelop
+%token tkbinop
+%token tkid
+%token tknumber
+%token tksrting
+
+%type<exp> Exp
+
+%%
+
+Program	:	Funcs
+		{
+			cout<<"The expression's value is "<<$1.value<<endl;
+		}
+	;
+
+Func	:   /* empty */ { }
+	|	FuncDecl Funcs { $$.value = $1.value || $3.value; }
+	;
+FuncDecl :  RetType tkid tklp Formals tkrp tklbrace Statements tkrbrace {};
+RetType :   Type{};
+RetType :   tkvoid{};
+Formals	:   /* empty */ { }
+	|	FormalsList {  }
+	;
+FormalsList :   FormalDecl {} 
+    |   FormalDecl tkcomma FormalsList {}
+    ;
+FormalDecl : Type tkid {};
+Statements : Statement {}
+        |   Statements Statement{}
+        ;
+Statement : tklbrace Statements tkrbrace {}
+    | Type tkid tksc {} 
+    | Type tkid tkassign Exp tksc {} 
+    | tkid tkassign Exp tksc {} 
+    | Call tksc {}
+    | tkreturn tksc{}
+    | tkreturn Exp tksc{}
+    | tkif tklp Exp tkrp Statment {}
+    | tkif tklp Exp tkrp Statment tkelse Statement {}
+    | tkwhile tklp Exp tkrp Statment {}
+    | tkwhile tklp Exp tkrp Statment tkelse Statement {}
+    | tkbreak tksc{}
+    | tkcontinue tksc{}
+    ;
+Call : tkid tklp ExpList tkrp {}
+    | tkid tklp tkrp {}
+    ;
+ExpList : Exp{}
+    | Exp tkcomma ExpList {}
+    ;
+Type : tkint {}
+    | tkbyte {}
+    | tkbool {}
+    ;
+Exp : tklp Exp tkrp {}
+    | Exp tkbinop Exp {}
+    | tkid {}
+    | Call {}
+    | tknumber {}
+    | tknumber tkb {} 
+    | tksrting {}
+    | tktrue {} 
+    | tkfalse {}
+    | tknot Exp {}
+    | Exp tkand Exp {}
+    | Exp tkor Exp {}
+    | Exp tkrelop Exp {}
+    ;
+%%
+
+int main()
+{
+	yyparse();
+}
+
+int yyerror(const char * message)
+{
+	cout<<"Parse error: "<<message<<endl;
+	exit(0);
+}

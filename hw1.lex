@@ -9,6 +9,16 @@
     void handleNestedComment();
     void handleUndefinedU();
     void handleUnterminatedComment();
+    void addToBuffer();
+    void addSingleBuffer(char c);
+    void handleU();
+    void undefinedEscapeSequence();
+    void endString();
+    void startComment();
+    void endComment();
+    char buffer[1025];
+    int buffer_pos=0;
+    int lineCount=0;
 %}
 %option yylineno
 %option noyywrap
@@ -18,9 +28,12 @@ alnum ([a-zA-Z0-9])
 xdigit ({digit}|[A-Fa-f])
 whitespace ([\t\n ])
 printable ([\x20-\x7e\x9\xa\xd])
-lineprintable ([\x20-\x7e\x9])
+lineprintable ([\x20-\x7e\x9\xa\xd]{-}[\r\n])
+stringprintable ([\x20-\x7e\x9\xa\xd]{-}[\\\"\r\n])
+commentprintable ([\x20-\x7e\x9\xa\xd]{-}[\/\*\r\n])
+%x STRING
+%x MULTICOMMENT
 %%
-[\x53] showToken("S");
 Int|UInt|Double|Float|Bool|String|Character showToken("TYPE");
 var showToken("VAR");
 let showToken("LET");
@@ -58,14 +71,38 @@ _{alnum}+ showToken("ID");
 {digit}+\.{digit}*[eE][\+-]{digit}+ showToken("DEC_REAL");
 {digit}*\.{digit}+[eE][\+-]{digit}+ showToken("DEC_REAL");
 0x{xdigit}+[pP][\+-]{digit}+ showToken("HEX_FP");
-\"([^\"\n\r]|(\\\"))*[\n\r]? handleUnclosedString();
-\"([^\"\n\r]|(\\\"))*\" showToken("STRING");
-\/\/{lineprintable}* showToken("COMMENT");
-\/\*([^\*]|\*[^\/])* handleUnterminatedComment();
-\/\*([^\*]|\*[^\/])*\*\/ showToken("COMMENT");
+\" BEGIN(STRING);
+<STRING>{stringprintable}* addToBuffer();
+<STRING>\\n addSingleBuffer('\n');
+<STRING>\\r addSingleBuffer('\r');
+<STRING>\\t addSingleBuffer('\t');
+<STRING>\\\\ addSingleBuffer('\\');
+<STRING>\\\" addSingleBuffer('\"');
+<STRING>\\u\{[a-fA-F0-9]{1,6}\} handleU();
+<STRING>\\{printable} undefinedEscapeSequence();
+<STRING>\\[^{printable}] undefinedEscapeSequence();
+<STRING>\\ handleUnclosedString();
+<STRING>[\r|\n] handleUnclosedString();
+<STRING><<EOF>> handleUnclosedString();
+<STRING>\" endString();BEGIN(INITIAL);
+
+\/\/{lineprintable}* startComment(); endComment();
+
+\/\* BEGIN(MULTICOMMENT);startComment();
+<MULTICOMMENT>{commentprintable}* ;
+<MULTICOMMENT>\/ ;
+<MULTICOMMENT>\* ;
+<MULTICOMMENT>\r\n ++lineCount;
+<MULTICOMMENT>\r ++lineCount;
+<MULTICOMMENT>\n ++lineCount;
+<MULTICOMMENT>\/\* handleNestedComment();
+<MULTICOMMENT>\*\/ endComment();BEGIN(INITIAL);
+<MULTICOMMENT><<EOF>> handleUnterminatedComment();
 {whitespace} ;
-. unknownToken(); 
+<*>. unknownToken(); 
 %%
+
+
 int printable(int c){
     return (c<=0x7e && c>= 0x20) || c== 0x9 || c == 0xa || c== 0xd;
 }
@@ -73,28 +110,16 @@ void unknownToken(){
     printf ("Error %c\n", *yytext);
     exit (0);
 }
-void handleNestedComment(){
-    printf ("Warning nested comment\n");
-    exit(0);
+void addToBuffer(){
+    strcpy(buffer+buffer_pos,yytext);
+    buffer_pos+=yyleng;
 }
-
+void addSingleBuffer(char c){
+    buffer[buffer_pos++]=c;
+}
 void handleUndefinedU(){
     printf ("Error undefined escape sequence u\n");
     exit (0);
-}
-
-void handleUnterminatedComment(){
-    char* str = yytext;
-    char* end = yytext + yyleng;
-    while(str<end){
-        if(!printable(*str)){
-            printf ("Error %c\n", *str);
-            exit (0);
-        }
-        str++;
-    }
-    printf ("Error unclosed comment\n");
-    exit(0);
 }
 int isHexDecimal(char c,long long* sum){
     if(c>='0' && c <= '9'){
@@ -111,156 +136,55 @@ int isHexDecimal(char c,long long* sum){
     }
     return 0;
 }
-
-char handleU(char **str){
-    if(**str!='{')
-        handleUndefinedU();
-    ++(*str);
+void handleU(){
+    char*str=yytext+3;
     long long sum=0;
-    int i=0;
-    while(isHexDecimal(**str,&sum) && sum<= 0x7e && i<6){
-        ++(*str);
-        ++i;
+    while(isHexDecimal(*str,&sum) && sum<= 0x7e ){
+        ++str;
     }
-    if(!printable(**str)){
+    if(!printable(*str)){
             printf ("Error %c\n", *str);
             exit (0);
     }
-    if((**str!='}') || !printable(sum)){
+    if((*str!='}') || !printable(sum)){
         handleUndefinedU();        
     }
-    return sum;
+    addSingleBuffer(sum);
+}
+void undefinedEscapeSequence(){
+    if(printable( *(yytext+1))){
+        printf("Error undefined escape sequence %c\n", *(yytext+1));
+    } else {
+        printf ("Error %c\n", *(yytext+1));
+    }
+    exit(0);
+    
+}
+void endString(){
+    buffer[buffer_pos]=0;
+    printf("%d %s %s\n", yylineno, "STRING", buffer); 
+    buffer_pos=0;
 }
 void handleUnclosedString(){
-    char* str = yytext;
-    char* end = yytext + yyleng;
-    while(str<end){
-        if(!printable(*str)){
-            printf ("Error %c\n", *str);
-            exit (0);
-        }
-        if(*str!='\\'){
-            ++str;
-            continue;
-        }
-        ++str;
-        if(str==end){
-            break;
-        }
-        if(*(str)=='n'){
-            continue;
-        } else if(*str=='r'){
-            continue;
-        } else if(*str=='t'){
-            continue;
-        } else if(*str=='\\'){
-            continue;
-        } else if(*str=='\"'){
-            continue;
-        } else if(*str=='u'){
-            ++str;
-            handleU(&str);
-        }
-        else {
-            printf("Error undefined escape sequence %c\n", *str);
-            exit(0);
-        }
-    }
     printf("Error unclosed string\n");
     exit(0);
 }
-void parseString(char*str,int len){
-
-    char *current = str;
-    char *end = str+len-1;
-    ++str;
-    while(str<end){
-        if(!printable(*str)){
-            printf ("Error %c\n", *str);
-            exit (0);
-        }
-        if(*str!='\\'){
-            *current=*str;
-            ++current;
-            ++str;
-            continue;
-        }
-        ++str; 
-        if(*(str)=='n'){
-            *current='\n';
-        } else if(*str=='r'){
-            *current='\r';
-        } else if(*str=='t'){
-            *current='\t';
-        } else if(*str=='\\'){
-            *current='\\';
-        } else if(*str=='\"'){
-            *current='\"';
-        } else if(*str=='u'){
-            ++str;
-            *current = handleU(&str);
-        }
-        else {
-            *current = *str;
-            printf("Error undefined escape sequence %c\n", *current);
-            exit(0);
-        }
-        ++current;
-        ++str;
-    }
-    *current =0;
+void startComment(){
+    lineCount=1;
+}
+void endComment(){
+    printf("%d %s %d\n", yylineno, "COMMENT", lineCount); 
+}
+void handleNestedComment(){
+    printf ("Warning nested comment\n");
+    exit(0);
 }
 
-int countLines(char* str){
-    int counter=1;
-    while(*str){
-        if(!printable(*str)){
-            printf ("Error %c\n", *str);
-            exit (0);
-        }
-        if(*str=='\n'){
-            ++counter;
-        } else if(*str=='\r'){
-            ++counter;
-            if(*(str+1) && *(str+1)=='\n'){
-                ++str;
-            }
-        }
-        ++str;
-    }
-    return counter;
-}
-void checkNestedComments(char * str){
-    ++str;
-    ++str;
-    while(*(str+1)){
-         if(!printable(*str)){
-            printf ("Error %c\n", *str);
-            exit (0);
-        }
-        if(*str!='/'){
-            ++str;
-            continue;
-        }
-        ++str; 
-         if(!printable(*str)){
-            printf ("Error %c\n", *str);
-            exit (0);
-        }
-        if(*(str)=='*'){
-            handleNestedComment();    
-        }
-    }
-    return;
+void handleUnterminatedComment(){
+    printf ("Error unclosed comment\n");
+    exit(0);
 }
 void showToken(char * name){
-    if(!strcmp(name,"COMMENT")){
-        if(*(yytext+1)=='*'){
-            checkNestedComments(yytext);
-        }
-        printf("%d %s %d\n", yylineno, name, countLines(yytext)); 
-        return;
-    }
     if(!strcmp(name,"BIN_INT")){
         printf("%d %s %ld\n", yylineno, name, strtol(yytext+2,NULL,2)); 
         return;
@@ -277,15 +201,5 @@ void showToken(char * name){
         printf("%d %s %ld\n", yylineno, name, strtol(yytext+2,NULL,16)); 
         return;
     }
-    if(!strcmp(name,"STRING")){
-        parseString(yytext,yyleng);
-    }
     printf("%d %s %s\n", yylineno, name, yytext); 
 }
-#if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
-int main()
-{
-    while (yylex())
-    return 0;
-}
-#endif

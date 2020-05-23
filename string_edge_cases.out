@@ -1,0 +1,32 @@
+1 LET let
+1 ID x
+1 COLON :
+1 TYPE String
+1 ASSIGN =
+1 STRING This is a string
+2 LET let
+2 ID x
+2 COLON :
+2 TYPE String
+2 ASSIGN =
+2 STRING This is a string" still a string
+3 LET let
+3 ID x
+3 COLON :
+3 TYPE String
+3 ASSIGN =
+3 STRING This is a string with /* /* */ inside
+4 LET let
+4 ID x
+4 COLON :
+4 TYPE String
+4 ASSIGN =
+4 STRING This is a string with /* */ inside
+5 LET let
+5 ID x
+5 COLON :
+5 TYPE String
+5 ASSIGN =
+5 STRING This is a string
+5 ID AndThisIsATokenFollowedByAnUnclosedString
+Error unclosed string
